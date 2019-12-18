@@ -22,6 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--init_norm', default=1, type=float)
     parser.add_argument('--max_norm', default=0.125, type=float)
+    parser.add_argument('--min_loss', default=0, type=float)
     parser.add_argument('--targeted', action='store_true')
     args = parser.parse_args()
 
@@ -70,14 +71,19 @@ if __name__ == '__main__':
         os.makedirs(output_dir)
 
     dataset = ImageNet_A(args.input_dir, targeted=args.targeted)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=(1 if (args.min_loss and (not args.targeted)) else args.batch_size), shuffle=False)
 
-    attacker = Attacker(steps=args.steps, gamma=args.gamma, init_norm=args.init_norm, max_norm=args.max_norm, device=torch.device('cuda'))
+    attacker = Attacker(steps=args.steps, 
+                        gamma=args.gamma, 
+                        init_norm=args.init_norm, 
+                        max_norm=args.max_norm, 
+                        min_loss=(args.min_loss if (args.min_loss and (not args.targeted)) else None), 
+                        device=torch.device('cuda'))
 
     for ind, (img, label, filenames) in enumerate(loader):
         img_g, label_g = img.cuda(), label.cuda()
 
-        adv, found = attacker.attack(model1, model2, model3, img_g, labels=label_g, targeted=args.targeted)
+        adv = attacker.attack(model1, model2, model3, img_g, labels=label_g, targeted=args.targeted)
 
         for bind, filename in enumerate(filenames):
             out_img = adv[bind].detach().cpu().numpy()

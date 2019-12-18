@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import numpy as np
 
 
 class Attacker:
@@ -13,6 +14,7 @@ class Attacker:
                  quantize: bool = True,
                  levels: int = 256,
                  max_norm: Optional[float] = None,
+                 min_loss: Optional[float] = None,
                  device: torch.device = torch.device('cpu')) -> None:
         self.steps = steps
         self.gamma = gamma
@@ -21,19 +23,19 @@ class Attacker:
         self.quantize = quantize
         self.levels = levels
         self.max_norm = max_norm
+        self.min_loss = min_loss
         
         self.device = device
 
-    def attack(self, 
+    def _iter_attack(self, 
                model1: nn.Module, 
                model2: nn.Module,
                model3: nn.Module,
                inputs: torch.Tensor, 
                labels: torch.Tensor,
+               epsilon: Optional[float] = None,
                targeted: bool = False,
                strict: bool = False)-> torch.Tensor:
-
-        if inputs.min() < 0 or inputs.max() > 1: raise ValueError('Input values should be in the [0, 1] range.')
 
         batch_size = inputs.shape[0]
         multiplier = 1 if targeted else -1
@@ -50,8 +52,8 @@ class Attacker:
         adv_found = torch.zeros(inputs.size(0), dtype=torch.uint8, device=self.device)
 
         for _ in range(self.steps):
-            if self.max_norm:
-                delta.data.renorm_(p=float('inf'), dim=0, maxnorm=self.max_norm)
+            if epsilon:
+                delta.data.renorm_(p=float('inf'), dim=0, maxnorm=epsilon)
                 if self.quantize:
                     delta.data.mul_(self.levels - 1).round_().div_(self.levels - 1)
 
@@ -79,7 +81,7 @@ class Attacker:
             
             is_better = loss < best_loss
             is_both = is_adv * is_better
-            adv_found = adv_found + is_both
+            adv_found = (adv_found + is_both) > 0
 
             if strict:
                 best_loss[is_both] = loss[is_both]
@@ -108,9 +110,48 @@ class Attacker:
 
             scheduler.step()
 
-        if self.max_norm:
-            best_delta.renorm_(p=float('inf'), dim=0, maxnorm=self.max_norm)
+        if epsilon:
+            best_delta.renorm_(p=float('inf'), dim=0, maxnorm=epsilon)
             if self.quantize:
                 best_delta.mul_(self.levels - 1).round_().div_(self.levels - 1)
 
-        return inputs + best_delta, adv_found
+        return best_delta, adv_found, best_loss
+
+    def attack(self, 
+               model1: nn.Module, 
+               model2: nn.Module,
+               model3: nn.Module,
+               inputs: torch.Tensor, 
+               labels: torch.Tensor,
+               targeted: bool = False,
+               strict: bool = False)-> torch.Tensor:
+
+        if inputs.min() < 0 or inputs.max() > 1: raise ValueError('Input values should be in the [0, 1] range.')
+
+        best_delta, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, self.max_norm, targeted, strict)
+
+        if self.min_loss:
+            if ((-best_loss) <= self.min_loss).all():
+                return inputs + best_delta
+
+            epsilons = np.arange(self.max_norm / 32, self.max_norm + self.max_norm / 32, self.max_norm / 32)
+
+            index_min = 0
+            index_max = len(epsilons) - 1
+            for _ in range(len(epsilons)):
+                
+                index_mid = int((index_min + index_max) / 2)
+                epsilon = epsilons[index_mid]
+
+                best_delta_t, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, epsilon, targeted, strict)
+
+                if ((-best_loss) > self.min_loss).all():
+                    best_delta = best_delta_t
+                    index_max = index_mid - 1
+                else:
+                    index_min = index_mid + 1
+
+                if index_min >= index_max:
+                    return inputs + best_delta
+
+        return inputs + best_delta
