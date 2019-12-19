@@ -71,7 +71,9 @@ if __name__ == '__main__':
         os.makedirs(output_dir)
 
     dataset = ImageNet_A(args.input_dir, targeted=args.targeted)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=(1 if (args.min_loss and (not args.targeted)) else args.batch_size), shuffle=False)
+    loader = torch.utils.data.DataLoader(dataset, 
+                                         batch_size=(1 if (args.min_loss and (not args.targeted)) else args.batch_size), 
+                                         shuffle=False)
 
     attacker = Attacker(steps=args.steps, 
                         gamma=args.gamma, 
