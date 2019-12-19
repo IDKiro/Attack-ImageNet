@@ -6,6 +6,25 @@ import torch.optim as optim
 import numpy as np
 
 
+class tv_loss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+    def forward(self, noise):
+        h_x = noise.size()[2]
+        w_x = noise.size()[3]
+        count_h = self._tensor_size(noise[:, :, 1:, :])
+        count_w = self._tensor_size(noise[:, :, : ,1:])
+        h_tv = torch.pow((noise[:, :, 1:, :] - noise[:, :, :h_x-1, :]), 2).sum()
+        w_tv = torch.pow((noise[:, :, :, 1:] - noise[:, :, :, :w_x-1]), 2).sum()
+        tvloss = h_tv / count_h + w_tv / count_w
+
+        return tvloss
+
+    def _tensor_size(self,t):
+        return t.size()[1]*t.size()[2]*t.size()[3]
+
+
 class Attacker:
     def __init__(self,
                  steps: int,
@@ -68,14 +87,15 @@ class Attacker:
             logits2 = model2(adv)
             logits3 = model3(adv)
 
-            pred_labels1 = logits1.argmax(1)
             ce_loss1 = F.cross_entropy(logits1, labels, reduction='none')
-            pred_labels2 = logits2.argmax(1)
             ce_loss2 = F.cross_entropy(logits2, labels, reduction='none')
-            pred_labels3 = logits3.argmax(1)
             ce_loss3 = F.cross_entropy(logits3, labels, reduction='none')
 
             loss = (ce_loss1 + ce_loss2 + ce_loss3) * multiplier
+
+            pred_labels1 = logits1.argmax(1)
+            pred_labels2 = logits2.argmax(1)
+            pred_labels3 = logits3.argmax(1)
 
             is_adv = ((pred_labels1 == labels) * (pred_labels2 == labels) * (pred_labels3 == labels)) if targeted else ((pred_labels1 != labels) * (pred_labels2 != labels) * (pred_labels3 != labels))
             
@@ -109,11 +129,6 @@ class Attacker:
             delta.data.clamp_(0, 1).sub_(inputs)
 
             scheduler.step()
-
-        if epsilon:
-            best_delta.renorm_(p=float('inf'), dim=0, maxnorm=epsilon)
-            if self.quantize:
-                best_delta.mul_(self.levels - 1).round_().div_(self.levels - 1)
 
         return best_delta, adv_found, best_loss
 

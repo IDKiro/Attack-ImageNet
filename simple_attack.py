@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--steps', default=60, type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--init_norm', default=1, type=float)
-    parser.add_argument('--max_norm', default=0.125, type=float)
+    parser.add_argument('--max_norm', default=0.12549, type=float)
     parser.add_argument('--min_loss', default=0, type=float)
     parser.add_argument('--targeted', action='store_true')
     args = parser.parse_args()
@@ -87,11 +87,12 @@ if __name__ == '__main__':
 
         for bind, filename in enumerate(filenames):
             out_img = adv[bind].detach().cpu().numpy()
+            delta_img = np.abs(out_img - img[bind].numpy()) * 255.0
 
             print('Attack on {}:'.format(os.path.split(filename)[-1]))
             print('Max: {0:.0f}, Mean: {1:.2f}'.format(
-                (255 * np.max(np.abs(out_img - img[bind].numpy()))),
-                (255 * np.mean(np.abs(out_img - img[bind].numpy()))) 
+                (np.max(delta_img)),
+                (np.mean(delta_img)) 
             ))
 
             out_img = np.transpose(out_img, axes=[1, 2, 0]) * 255.0
