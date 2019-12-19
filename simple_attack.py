@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--steps', default=60, type=int)
     parser.add_argument('--gamma', default=0.1, type=float)
     parser.add_argument('--init_norm', default=1, type=float)
-    parser.add_argument('--max_norm', default=0.12549, type=float)
+    parser.add_argument('--max_norm', default=32, type=float)
     parser.add_argument('--min_loss', default=0, type=float)
     parser.add_argument('--targeted', action='store_true')
     args = parser.parse_args()
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     attacker = Attacker(steps=args.steps, 
                         gamma=args.gamma, 
                         init_norm=args.init_norm, 
-                        max_norm=args.max_norm, 
+                        max_norm=args.max_norm/255.0, 
                         min_loss=(args.min_loss if (args.min_loss and (not args.targeted)) else None), 
                         device=torch.device('cuda'))
 

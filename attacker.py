@@ -72,7 +72,11 @@ class Attacker:
 
         for _ in range(self.steps):
             if epsilon:
-                delta.data.renorm_(p=float('inf'), dim=0, maxnorm=epsilon)
+                # delta.data.renorm_(p=float('inf'), dim=0, maxnorm=epsilon)
+                delta.data = torch.max(
+                    torch.min(delta.data, torch.full_like(delta.data, epsilon)), 
+                    torch.full_like(delta.data, -epsilon)
+                )
                 if self.quantize:
                     delta.data.mul_(self.levels - 1).round_().div_(self.levels - 1)
 
