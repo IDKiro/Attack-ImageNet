@@ -68,12 +68,11 @@ class Attacker:
             logits1 = model1(adv)
             logits2 = model2(adv)
             logits3 = model3(adv)
+ 
+            logits_e = (logits1 + logits2 + logits3) / 3
+            ce_loss_e = F.cross_entropy(logits_e, labels, reduction='none')
 
-            ce_loss1 = F.cross_entropy(logits1, labels, reduction='none')
-            ce_loss2 = F.cross_entropy(logits2, labels, reduction='none')
-            ce_loss3 = F.cross_entropy(logits3, labels, reduction='none')
-
-            loss = (ce_loss1 + ce_loss2 + ce_loss3) * multiplier
+            loss = ce_loss_e * multiplier
 
             pred_labels1 = logits1.argmax(1)
             pred_labels2 = logits2.argmax(1)
