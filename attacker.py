@@ -5,39 +5,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 
-def gkern(kernlen=21, nsig=3, device=torch.device('cpu')):
-    import scipy.stats as st
-
-    x = np.linspace(-nsig, nsig, kernlen)
-    kern1d = st.norm.pdf(x)
-    kernel_raw = np.outer(kern1d, kern1d)
-    kernel = (kernel_raw / kernel_raw.sum()).astype(np.float32)
-
-    stack_kernel = np.stack([kernel, kernel, kernel])
-    stack_kernel = np.expand_dims(stack_kernel, 1)
-    stack_kernel = torch.Tensor(stack_kernel).to(device)
-
-    return stack_kernel
-
-
-class tv_loss(nn.Module):
-    def __init__(self):
-        super().__init__()
-        
-    def forward(self, noise):
-        h_x = noise.size()[2]
-        w_x = noise.size()[3]
-        count_h = self._tensor_size(noise[:, :, 1:, :])
-        count_w = self._tensor_size(noise[:, :, : ,1:])
-        h_tv = torch.pow((noise[:, :, 1:, :] - noise[:, :, :h_x-1, :]), 2).sum()
-        w_tv = torch.pow((noise[:, :, :, 1:] - noise[:, :, :, :w_x-1]), 2).sum()
-        tvloss = h_tv / count_h + w_tv / count_w
-
-        return tvloss
-
-    def _tensor_size(self,t):
-        return t.size()[1]*t.size()[2]*t.size()[3]
-
 
 class Attacker:
     def __init__(self,
@@ -87,7 +54,6 @@ class Attacker:
 
         for _ in range(self.steps):
             if epsilon:
-                # delta.data.renorm_(p=float('inf'), dim=0, maxnorm=epsilon)
                 delta.data.clamp_(-epsilon, epsilon)
                 if self.quantize:
                     delta.data.mul_(self.levels - 1).round_().div_(self.levels - 1)
@@ -139,12 +105,8 @@ class Attacker:
             if (grad_norms == 0).any():
                 delta.grad[grad_norms == 0] = torch.randn_like(delta.grad[grad_norms == 0])
 
-            # # Gaussian Process
-            # k_size = 11
-            # g_kernel = gkern(k_size, 3, self.device)
-            # delta.grad = F.conv2d(delta.grad, g_kernel, padding=(k_size-1)//2, groups=3)
-
             optimizer.step()
+            scheduler.step()
 
             # DDN speeder
             norm.mul_(1 - (2 * is_adv.float() - 1) * self.gamma)
@@ -153,8 +115,6 @@ class Attacker:
             # avoid out of bound
             delta.data.add_(inputs)
             delta.data.clamp_(0, 1).sub_(inputs)
-
-            scheduler.step()
 
         return best_delta, adv_found, best_loss
 
@@ -175,7 +135,7 @@ class Attacker:
             if ((-best_loss) <= self.min_loss).all():
                 return inputs + best_delta
 
-            epsilons = np.arange(self.max_norm / 32, self.max_norm + self.max_norm / 32, self.max_norm / 32)
+            epsilons = np.arange(1, self.max_norm * 255.0 + 0.5, 1) / 255.0     # 256 levels is enough
 
             index_min = 0
             index_max = len(epsilons) - 1
