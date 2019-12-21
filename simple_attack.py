@@ -18,9 +18,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_dir', default='./data/', type=str)
     parser.add_argument('--output_dir', default='./results/', type=str)
     parser.add_argument('--batch_size', default=4, type=int)
-    parser.add_argument('--steps', default=60, type=int)
-    parser.add_argument('--gamma', default=0.1, type=float)
-    parser.add_argument('--init_norm', default=1, type=float)
+    parser.add_argument('--steps', default=100, type=int)
     parser.add_argument('--max_norm', default=32, type=float)
     parser.add_argument('--min_loss', default=0, type=float)
     parser.add_argument('--targeted', action='store_true')
@@ -76,8 +74,6 @@ if __name__ == '__main__':
                                          shuffle=False)
 
     attacker = Attacker(steps=args.steps, 
-                        gamma=args.gamma, 
-                        init_norm=args.init_norm, 
                         max_norm=args.max_norm/255.0, 
                         min_loss=(args.min_loss if (args.min_loss and (not args.targeted)) else None), 
                         device=torch.device('cuda'))

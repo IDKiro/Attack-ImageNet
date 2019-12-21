@@ -9,16 +9,12 @@ import numpy as np
 class Attacker:
     def __init__(self,
                  steps: int,
-                 gamma: float = 0.05,
-                 init_norm: float = 1.,
                  quantize: bool = True,
                  levels: int = 256,
                  max_norm: Optional[float] = None,
                  min_loss: Optional[float] = None,
                  device: torch.device = torch.device('cpu')) -> None:
         self.steps = steps
-        self.gamma = gamma
-        self.init_norm = init_norm
 
         self.quantize = quantize
         self.levels = levels
@@ -40,11 +36,9 @@ class Attacker:
         batch_size = inputs.shape[0]
         multiplier = 1 if targeted else -1
         delta = torch.zeros_like(inputs, requires_grad=True)
-        norm = torch.full((batch_size,), self.init_norm, device=self.device, dtype=torch.float)
 
         # Setup optimizers
-        optimizer = optim.Adam([delta], lr=1)
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=int(self.steps/3), gamma=0.1)
+        optimizer = optim.SGD([delta], lr=1, momentum=0.9)
 
         # for choosing best results
         best_loss = 1e4 * torch.ones(inputs.size(0), dtype=torch.float, device=self.device)
@@ -105,11 +99,6 @@ class Attacker:
                 delta.grad[grad_norms == 0] = torch.randn_like(delta.grad[grad_norms == 0])
 
             optimizer.step()
-            scheduler.step()
-
-            # DDN speeder
-            norm.mul_(1 - (2 * is_adv.float() - 1) * self.gamma)
-            delta.data.mul_((norm / delta.data.view(batch_size, -1).norm(p=float('inf'), dim=1)).view(-1, 1, 1, 1))
 
             # avoid out of bound
             delta.data.add_(inputs)
