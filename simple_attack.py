@@ -21,6 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--steps', default=100, type=int)
     parser.add_argument('--max_norm', default=32, type=float)
     parser.add_argument('--min_loss', default=0, type=float)
+    parser.add_argument('--max_loss', default=0, type=float)
     parser.add_argument('--targeted', action='store_true')
     args = parser.parse_args()
 
@@ -63,6 +64,13 @@ if __name__ == '__main__':
     model3.cuda()
     model3.eval()
 
+    for _, param in enumerate(model1.parameters()):
+        param.requires_grad = False
+    for _, param in enumerate(model2.parameters()):
+        param.requires_grad = False
+    for _, param in enumerate(model3.parameters()):
+        param.requires_grad = False
+
     output_dir = os.path.join(args.output_dir, 'images')
 
     if not os.path.isdir(output_dir):
@@ -70,12 +78,13 @@ if __name__ == '__main__':
 
     dataset = ImageNet_A(args.input_dir, targeted=args.targeted)
     loader = torch.utils.data.DataLoader(dataset, 
-                                         batch_size=(1 if (args.min_loss and (not args.targeted)) else args.batch_size), 
+                                         batch_size=(1 if (args.min_loss or args.max_loss) else args.batch_size), 
                                          shuffle=False)
 
     attacker = Attacker(steps=args.steps, 
                         max_norm=args.max_norm/255.0, 
-                        min_loss=(args.min_loss if (args.min_loss and (not args.targeted)) else None), 
+                        min_loss=(args.min_loss if args.min_loss else None),
+                        max_loss=(args.max_loss if args.max_loss else None),
                         device=torch.device('cuda'))
 
     for ind, (img, label, filenames) in enumerate(loader):

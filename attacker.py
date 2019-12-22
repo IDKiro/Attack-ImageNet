@@ -13,6 +13,7 @@ class Attacker:
                  levels: int = 256,
                  max_norm: Optional[float] = None,
                  min_loss: Optional[float] = None,
+                 max_loss: Optional[float] = None,
                  device: torch.device = torch.device('cpu')) -> None:
         self.steps = steps
 
@@ -20,6 +21,7 @@ class Attacker:
         self.levels = levels
         self.max_norm = max_norm
         self.min_loss = min_loss
+        self.max_loss = max_loss
         
         self.device = device
 
@@ -54,18 +56,13 @@ class Attacker:
 
             adv = inputs + delta
 
-            for _, param in enumerate(model1.parameters()):
-                param.requires_grad = False
-            for _, param in enumerate(model2.parameters()):
-                param.requires_grad = False
-
             logits1 = model1(adv)
             logits2 = model2(adv)
             logits3 = model3(adv)
- 
-            logits_e = (logits1 + logits2 + logits3) / 3
-            ce_loss_e = F.cross_entropy(logits_e, labels, reduction='none')
 
+            # logits fuse
+            logits_e = (logits1 + logits2 + logits3) / 3
+            ce_loss_e = F.cross_entropy(logits_e, labels, reduction='none')     
             loss = ce_loss_e * multiplier
 
             pred_labels1 = logits1.argmax(1)
@@ -79,6 +76,7 @@ class Attacker:
             is_both = is_adv * is_better
             adv_found = (adv_found + is_both) > 0
 
+            # update only when attack is success and loss is higher or not
             if strict:
                 best_loss[is_both] = loss[is_both]
                 best_delta[is_both] = delta.data[is_both]
@@ -119,8 +117,34 @@ class Attacker:
 
         best_delta, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, self.max_norm, targeted, strict)
 
-        if self.min_loss:
+        # search best linf for untargeted
+        if self.min_loss and not targeted:
             if ((-best_loss) <= self.min_loss).all():
+                return inputs + best_delta
+
+            epsilons = np.arange(1, self.max_norm * 255.0 + 0.5, 1) / 255.0     # 256 levels is enough
+
+            index_min = 0
+            index_max = len(epsilons) - 1
+            for _ in range(len(epsilons)):
+
+                index_mid = int((index_min + index_max) / 2)
+                epsilon = epsilons[index_mid]
+
+                best_delta_t, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, epsilon, targeted, strict)
+
+                if ((-best_loss) > self.min_loss).all():
+                    best_delta = best_delta_t
+                    index_max = index_mid - 1
+                else:
+                    index_min = index_mid + 1
+
+                if index_min >= index_max:
+                    return inputs + best_delta
+
+        # search best linf for targeted
+        if self.max_loss and targeted:
+            if ((best_loss) >= self.max_loss).all():
                 return inputs + best_delta
 
             epsilons = np.arange(1, self.max_norm * 255.0 + 0.5, 1) / 255.0     # 256 levels is enough
@@ -134,7 +158,7 @@ class Attacker:
 
                 best_delta_t, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, epsilon, targeted, strict)
 
-                if ((-best_loss) > self.min_loss).all():
+                if ((best_loss) < self.max_loss).all():
                     best_delta = best_delta_t
                     index_max = index_mid - 1
                 else:
