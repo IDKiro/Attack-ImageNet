@@ -1,9 +1,25 @@
 from typing import Optional, Tuple
+import random
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import numpy as np
+
+
+def input_diversity(image, prob, low, high):
+    if random.random() > prob:
+        return image
+    rnd = random.randint(low, high)
+    rescaled = F.interpolate(image, size=[rnd, rnd], mode='bilinear')
+    h_rem = high - rnd
+    w_rem = high - rnd
+    pad_top = random.randint(0, h_rem)
+    pad_bottom = h_rem - pad_top
+    pad_left = random.randint(0, w_rem)
+    pad_right = w_rem - pad_left
+    padded = F.pad(rescaled, [pad_top, pad_bottom, pad_left, pad_right], 'constant', 0)
+    return padded
 
 
 class Attacker:
@@ -47,10 +63,11 @@ class Attacker:
                     delta.data.mul_(self.levels - 1).round_().div_(self.levels - 1)
 
             adv = inputs + delta
+            div_adv = input_diversity(adv, 0.9, 270, 299)
 
-            logits1 = model1(adv)
-            logits2 = model2(adv)
-            logits3 = model3(adv)
+            logits1 = model1(div_adv)
+            logits2 = model2(div_adv)
+            logits3 = model3(div_adv)
 
             # logits fuse
             logits_e = (logits1 + logits2 + logits3) / 3
