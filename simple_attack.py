@@ -17,6 +17,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir', default='./data/', type=str)
     parser.add_argument('--output_dir', default='./results/', type=str)
+    parser.add_argument('--csv', default='dev.csv', type=str)
     parser.add_argument('--batch_size', default=4, type=int)
     parser.add_argument('--steps', default=200, type=int)
     parser.add_argument('--max_norm', default=32, type=float)
@@ -73,7 +74,7 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
-    dataset = ImageNet_A(args.input_dir)
+    dataset = ImageNet_A(args.input_dir, csv_name=args.csv)
     loader = torch.utils.data.DataLoader(dataset, 
                                          batch_size=args.batch_size, 
                                          shuffle=False)

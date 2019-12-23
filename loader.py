@@ -10,9 +10,9 @@ from torch.utils.data import Dataset
 
 
 class ImageNet_A(Dataset):
-	def __init__(self, root_dir):
-		labels_dir = os.path.join(root_dir, 'dev.csv')
-		self.image_dir = os.path.join(root_dir, 'images')
+	def __init__(self, root_dir, csv_name='dev.csv', folder_name='images'):
+		labels_dir = os.path.join(root_dir, csv_name)
+		self.image_dir = os.path.join(root_dir, folder_name)
 		self.labels = pd.read_csv(labels_dir)
 
 	def __len__(self):
