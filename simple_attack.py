@@ -21,6 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', default=4, type=int)
     parser.add_argument('--steps', default=200, type=int)
     parser.add_argument('--max_norm', default=32, type=float)
+    parser.add_argument('--div_prob', default=0.9, type=float)
     args = parser.parse_args()
 
     pretrained_model1 = resnet101_denoise()
@@ -86,7 +87,7 @@ if __name__ == '__main__':
     for ind, (img, label_true, label_target, filenames) in enumerate(loader):
         img_g, label_true_g, label_target_g = img.cuda(), label_true.cuda(), label_target.cuda()
 
-        adv = attacker.attack(model1, model2, model3, img_g, label_true_g, label_target_g)
+        adv = attacker.attack(model1, model2, model3, img_g, label_true_g, label_target_g, args.div_prob)
 
         for bind, filename in enumerate(filenames):
             out_img = adv[bind].detach().cpu().numpy()

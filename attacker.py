@@ -37,14 +37,14 @@ class Attacker:
         
         self.device = device
 
-    def _iter_attack(self, 
-                     model1: nn.Module, 
-                     model2: nn.Module,
-                     model3: nn.Module,
-                     inputs: torch.Tensor, 
-                     labels_true: torch.Tensor,
-                     labels_target: torch.Tensor,
-                     epsilon: Optional[float] = None)-> torch.Tensor:
+    def attack(self, 
+               model1: nn.Module, 
+               model2: nn.Module,
+               model3: nn.Module,
+               inputs: torch.Tensor, 
+               labels_true: torch.Tensor,
+               labels_target: torch.Tensor,
+               div_prob: float)-> torch.Tensor:
 
         batch_size = inputs.shape[0]
         delta = torch.zeros_like(inputs, requires_grad=True)
@@ -57,13 +57,13 @@ class Attacker:
         best_delta = torch.zeros_like(inputs)
 
         for _ in range(self.steps):
-            if epsilon:
-                delta.data.clamp_(-epsilon, epsilon)
+            if self.max_norm:
+                delta.data.clamp_(-self.max_norm, self.max_norm)
                 if self.quantize:
                     delta.data.mul_(self.levels - 1).round_().div_(self.levels - 1)
 
             adv = inputs + delta
-            div_adv = input_diversity(adv, 0.9, 270, 299)
+            div_adv = input_diversity(adv, div_prob, 270, 299)
 
             logits1 = model1(div_adv)
             logits2 = model2(div_adv)
@@ -98,19 +98,5 @@ class Attacker:
             # avoid out of bound
             delta.data.add_(inputs)
             delta.data.clamp_(0, 1).sub_(inputs)
-
-        return best_delta, best_loss
-
-    def attack(self, 
-               model1: nn.Module, 
-               model2: nn.Module,
-               model3: nn.Module,
-               inputs: torch.Tensor, 
-               labels_true: torch.Tensor,
-               labels_target: torch.Tensor)-> torch.Tensor:
-
-        if inputs.min() < 0 or inputs.max() > 1: raise ValueError('Input values should be in the [0, 1] range.')
-
-        best_delta, best_loss = self._iter_attack(model1, model2, model3, inputs, labels_true, labels_target, self.max_norm)
 
         return inputs + best_delta
