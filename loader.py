@@ -10,11 +10,10 @@ from torch.utils.data import Dataset
 
 
 class ImageNet_A(Dataset):
-	def __init__(self, root_dir, targeted=True):
+	def __init__(self, root_dir):
 		labels_dir = os.path.join(root_dir, 'dev.csv')
 		self.image_dir = os.path.join(root_dir, 'images')
 		self.labels = pd.read_csv(labels_dir)
-		self.targeted = targeted
 
 	def __len__(self):
 		l = len(self.labels)
@@ -27,9 +26,7 @@ class ImageNet_A(Dataset):
 		in_img = np.transpose(in_img_t.astype(np.float32), axes=[2, 0, 1])
 		img = in_img / 255.0
 
-		if self.targeted:
-			label = self.labels.at[idx, 'TargetClass']
-		else:
-			label = self.labels.at[idx, 'TrueLabel']
+		label_true = self.labels.at[idx, 'TrueLabel']
+		label_target = self.labels.at[idx, 'TargetClass']
 
-		return img, label, filename
+		return img, label_true, label_target, filename

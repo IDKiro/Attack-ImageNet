@@ -12,16 +12,12 @@ class Attacker:
                  quantize: bool = True,
                  levels: int = 256,
                  max_norm: Optional[float] = None,
-                 min_loss: Optional[float] = None,
-                 max_loss: Optional[float] = None,
                  device: torch.device = torch.device('cpu')) -> None:
         self.steps = steps
 
         self.quantize = quantize
         self.levels = levels
         self.max_norm = max_norm
-        self.min_loss = min_loss
-        self.max_loss = max_loss
         
         self.device = device
 
@@ -30,13 +26,11 @@ class Attacker:
                      model2: nn.Module,
                      model3: nn.Module,
                      inputs: torch.Tensor, 
-                     labels: torch.Tensor,
-                     epsilon: Optional[float] = None,
-                     targeted: bool = False,
-                     strict: bool = False)-> torch.Tensor:
+                     labels_true: torch.Tensor,
+                     labels_target: torch.Tensor,
+                     epsilon: Optional[float] = None)-> torch.Tensor:
 
         batch_size = inputs.shape[0]
-        multiplier = 1 if targeted else -1
         delta = torch.zeros_like(inputs, requires_grad=True)
 
         # Setup optimizers
@@ -45,8 +39,6 @@ class Attacker:
         # for choosing best results
         best_loss = 1e4 * torch.ones(inputs.size(0), dtype=torch.float, device=self.device)
         best_delta = torch.zeros_like(inputs)
-
-        adv_found = torch.zeros(inputs.size(0), dtype=torch.uint8, device=self.device)
 
         for _ in range(self.steps):
             if epsilon:
@@ -62,27 +54,15 @@ class Attacker:
 
             # logits fuse
             logits_e = (logits1 + logits2 + logits3) / 3
-            ce_loss_e = F.cross_entropy(logits_e, labels, reduction='none')     
-            loss = ce_loss_e * multiplier
+            ce_loss_true = F.cross_entropy(logits_e, labels_true, reduction='none')     
+            ce_loss_target = F.cross_entropy(logits_e, labels_target, reduction='none')
 
-            pred_labels1 = logits1.argmax(1)
-            pred_labels2 = logits2.argmax(1)
-            pred_labels3 = logits3.argmax(1)
-
-            is_adv = ((pred_labels1 == labels) * (pred_labels2 == labels) * (pred_labels3 == labels)) if targeted \
-                else ((pred_labels1 != labels) * (pred_labels2 != labels) * (pred_labels3 != labels))
+            loss = ce_loss_target - ce_loss_true
             
             is_better = loss < best_loss
-            is_both = is_adv * is_better
-            adv_found = (adv_found + is_both) > 0
 
-            # update only when attack is success and loss is higher or not
-            if strict:
-                best_loss[is_both] = loss[is_both]
-                best_delta[is_both] = delta.data[is_both]
-            else:
-                best_loss[is_better] = loss[is_better]
-                best_delta[is_better] = delta.data[is_better]
+            best_loss[is_better] = loss[is_better]
+            best_delta[is_better] = delta.data[is_better]
             
             loss = torch.mean(loss)
             optimizer.zero_grad()
@@ -102,69 +82,18 @@ class Attacker:
             delta.data.add_(inputs)
             delta.data.clamp_(0, 1).sub_(inputs)
 
-        return best_delta, adv_found, best_loss
+        return best_delta, best_loss
 
     def attack(self, 
                model1: nn.Module, 
                model2: nn.Module,
                model3: nn.Module,
                inputs: torch.Tensor, 
-               labels: torch.Tensor,
-               targeted: bool = False,
-               strict: bool = False)-> torch.Tensor:
+               labels_true: torch.Tensor,
+               labels_target: torch.Tensor)-> torch.Tensor:
 
         if inputs.min() < 0 or inputs.max() > 1: raise ValueError('Input values should be in the [0, 1] range.')
 
-        best_delta, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, self.max_norm, targeted, strict)
-
-        # search best linf for untargeted
-        if self.min_loss and not targeted:
-            if ((-best_loss) <= self.min_loss).all():
-                return inputs + best_delta
-
-            epsilons = np.arange(1, self.max_norm * 255.0 + 0.5, 1) / 255.0     # 256 levels is enough
-
-            index_min = 0
-            index_max = len(epsilons) - 1
-            for _ in range(len(epsilons)):
-
-                index_mid = int((index_min + index_max) / 2)
-                epsilon = epsilons[index_mid]
-
-                best_delta_t, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, epsilon, targeted, strict)
-
-                if ((-best_loss) > self.min_loss).all():
-                    best_delta = best_delta_t
-                    index_max = index_mid - 1
-                else:
-                    index_min = index_mid + 1
-
-                if index_min >= index_max:
-                    return inputs + best_delta
-
-        # search best linf for targeted
-        if self.max_loss and targeted:
-            if ((best_loss) >= self.max_loss).all():
-                return inputs + best_delta
-
-            epsilons = np.arange(1, self.max_norm * 255.0 + 0.5, 1) / 255.0     # 256 levels is enough
-
-            index_min = 0
-            index_max = len(epsilons) - 1
-            for _ in range(len(epsilons)):
-                
-                index_mid = int((index_min + index_max) / 2)
-                epsilon = epsilons[index_mid]
-
-                best_delta_t, _, best_loss = self._iter_attack(model1, model2, model3, inputs, labels, epsilon, targeted, strict)
-
-                if ((best_loss) < self.max_loss).all():
-                    best_delta = best_delta_t
-                    index_max = index_mid - 1
-                else:
-                    index_min = index_mid + 1
-
-                if index_min >= index_max:
-                    return inputs + best_delta
+        best_delta, best_loss = self._iter_attack(model1, model2, model3, inputs, labels_true, labels_target, self.max_norm)
 
         return inputs + best_delta

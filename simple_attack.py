@@ -18,11 +18,8 @@ if __name__ == '__main__':
     parser.add_argument('--input_dir', default='./data/', type=str)
     parser.add_argument('--output_dir', default='./results/', type=str)
     parser.add_argument('--batch_size', default=4, type=int)
-    parser.add_argument('--steps', default=100, type=int)
+    parser.add_argument('--steps', default=200, type=int)
     parser.add_argument('--max_norm', default=32, type=float)
-    parser.add_argument('--min_loss', default=0, type=float)
-    parser.add_argument('--max_loss', default=0, type=float)
-    parser.add_argument('--targeted', action='store_true')
     args = parser.parse_args()
 
     pretrained_model1 = resnet101_denoise()
@@ -76,21 +73,19 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
-    dataset = ImageNet_A(args.input_dir, targeted=args.targeted)
+    dataset = ImageNet_A(args.input_dir)
     loader = torch.utils.data.DataLoader(dataset, 
-                                         batch_size=(1 if (args.min_loss or args.max_loss) else args.batch_size), 
+                                         batch_size=args.batch_size, 
                                          shuffle=False)
 
     attacker = Attacker(steps=args.steps, 
                         max_norm=args.max_norm/255.0, 
-                        min_loss=(args.min_loss if args.min_loss else None),
-                        max_loss=(args.max_loss if args.max_loss else None),
                         device=torch.device('cuda'))
 
-    for ind, (img, label, filenames) in enumerate(loader):
-        img_g, label_g = img.cuda(), label.cuda()
+    for ind, (img, label_true, label_target, filenames) in enumerate(loader):
+        img_g, label_true_g, label_target_g = img.cuda(), label_true.cuda(), label_target.cuda()
 
-        adv = attacker.attack(model1, model2, model3, img_g, labels=label_g, targeted=args.targeted)
+        adv = attacker.attack(model1, model2, model3, img_g, label_true_g, label_target_g)
 
         for bind, filename in enumerate(filenames):
             out_img = adv[bind].detach().cpu().numpy()
