@@ -69,11 +69,12 @@ class Attacker:
             logits2 = model2(div_adv)
             logits3 = model3(div_adv)
 
-            # logits fuse
+            # fuse logits
             logits_e = (logits1 + logits2 + logits3) / 3
             ce_loss_true = F.cross_entropy(logits_e, labels_true, reduction='none')     
             ce_loss_target = F.cross_entropy(logits_e, labels_target, reduction='none')
 
+            # fuse targeted and untargeted
             loss = ce_loss_target - ce_loss_true
             
             is_better = loss < best_loss

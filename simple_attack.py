@@ -13,17 +13,7 @@ from utils.Resnet import resnet152_denoise, resnet101_denoise, resnet152
 from utils.Normalize import Normalize, Permute
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dir', default='./data/', type=str)
-    parser.add_argument('--output_dir', default='./results/', type=str)
-    parser.add_argument('--csv', default='dev.csv', type=str)
-    parser.add_argument('--batch_size', default=4, type=int)
-    parser.add_argument('--steps', default=200, type=int)
-    parser.add_argument('--max_norm', default=32, type=float)
-    parser.add_argument('--div_prob', default=0.9, type=float)
-    args = parser.parse_args()
-
+def load_model():
     pretrained_model1 = resnet101_denoise()
     loaded_state_dict = torch.load(os.path.join('weight', 'Adv_Denoise_Resnext101.pytorch'))
     pretrained_model1.load_state_dict(loaded_state_dict, strict=True)
@@ -69,6 +59,22 @@ if __name__ == '__main__':
         param.requires_grad = False
     for _, param in enumerate(model3.parameters()):
         param.requires_grad = False
+
+    return model1, model2, model3
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_dir', default='./data/', type=str)
+    parser.add_argument('--output_dir', default='./results/', type=str)
+    parser.add_argument('--csv', default='dev.csv', type=str)
+    parser.add_argument('--batch_size', default=4, type=int)
+    parser.add_argument('--steps', default=200, type=int)
+    parser.add_argument('--max_norm', default=32, type=float)
+    parser.add_argument('--div_prob', default=0.9, type=float)
+    args = parser.parse_args()
+
+    model1, model2, model3 = load_model()
 
     output_dir = os.path.join(args.output_dir, 'images')
 
