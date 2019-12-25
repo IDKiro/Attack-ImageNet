@@ -7,35 +7,38 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
-def input_diversity(image, prob, low, high):
-    if random.random() > prob:
-        return image
-    rnd = random.randint(low, high)
-    rescaled = F.interpolate(image, size=[rnd, rnd], mode='bilinear')
-    h_rem = high - rnd
-    w_rem = high - rnd
-    pad_top = random.randint(0, h_rem)
-    pad_bottom = h_rem - pad_top
-    pad_left = random.randint(0, w_rem)
-    pad_right = w_rem - pad_left
-    padded = F.pad(rescaled, [pad_top, pad_bottom, pad_left, pad_right], 'constant', 0)
-    return padded
-
-
 class Attacker:
     def __init__(self,
                  steps: int,
                  quantize: bool = True,
                  levels: int = 256,
                  max_norm: Optional[float] = None,
+                 div_prob: float = 0.9,
+                 loss_amp: float = 4.0,
                  device: torch.device = torch.device('cpu')) -> None:
         self.steps = steps
 
         self.quantize = quantize
         self.levels = levels
         self.max_norm = max_norm
+        self.div_prob = div_prob
+        self.loss_amp = loss_amp
         
         self.device = device
+
+    def input_diversity(self, image, low=270, high=299):
+        if random.random() > self.div_prob:
+            return image
+        rnd = random.randint(low, high)
+        rescaled = F.interpolate(image, size=[rnd, rnd], mode='bilinear')
+        h_rem = high - rnd
+        w_rem = high - rnd
+        pad_top = random.randint(0, h_rem)
+        pad_bottom = h_rem - pad_top
+        pad_left = random.randint(0, w_rem)
+        pad_right = w_rem - pad_left
+        padded = F.pad(rescaled, [pad_top, pad_bottom, pad_left, pad_right], 'constant', 0)
+        return padded
 
     def attack(self, 
                model1: nn.Module, 
@@ -43,13 +46,12 @@ class Attacker:
                model3: nn.Module,
                inputs: torch.Tensor, 
                labels_true: torch.Tensor,
-               labels_target: torch.Tensor,
-               div_prob: float)-> torch.Tensor:
+               labels_target: torch.Tensor)-> torch.Tensor:
 
         batch_size = inputs.shape[0]
         delta = torch.zeros_like(inputs, requires_grad=True)
 
-        # Setup optimizers
+        # setup optimizer
         optimizer = optim.SGD([delta], lr=1, momentum=0.9)
 
         # for choosing best results
@@ -63,7 +65,7 @@ class Attacker:
                     delta.data.mul_(self.levels - 1).round_().div_(self.levels - 1)
 
             adv = inputs + delta
-            div_adv = input_diversity(adv, div_prob, 270, 299)
+            div_adv = self.input_diversity(adv)
 
             logits1 = model1(div_adv)
             logits2 = model2(div_adv)
@@ -75,7 +77,7 @@ class Attacker:
             ce_loss_target = F.cross_entropy(logits_e, labels_target, reduction='none')
 
             # fuse targeted and untargeted
-            loss = ce_loss_target - ce_loss_true
+            loss = self.loss_amp * ce_loss_target - ce_loss_true
             
             is_better = loss < best_loss
 
@@ -86,7 +88,7 @@ class Attacker:
             optimizer.zero_grad()
             loss.backward()
 
-            # renorming gradient to [-1, 1]
+            # renorm gradient
             grad_norms = delta.grad.view(batch_size, -1).norm(p=float('inf'), dim=1)
             delta.grad.div_(grad_norms.view(-1, 1, 1, 1))
 

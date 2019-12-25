@@ -69,7 +69,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', default='./results/', type=str)
     parser.add_argument('--csv', default='dev.csv', type=str)
     parser.add_argument('--batch_size', default=4, type=int)
-    parser.add_argument('--steps', default=200, type=int)
+    parser.add_argument('--steps', default=100, type=int)
     parser.add_argument('--max_norm', default=32, type=float)
     parser.add_argument('--div_prob', default=0.9, type=float)
     args = parser.parse_args()
@@ -87,13 +87,14 @@ if __name__ == '__main__':
                                          shuffle=False)
 
     attacker = Attacker(steps=args.steps, 
-                        max_norm=args.max_norm/255.0, 
+                        max_norm=args.max_norm/255.0,
+                        div_prob=args.div_prob,
                         device=torch.device('cuda'))
 
     for ind, (img, label_true, label_target, filenames) in enumerate(loader):
         img_g, label_true_g, label_target_g = img.cuda(), label_true.cuda(), label_target.cuda()
 
-        adv = attacker.attack(model1, model2, model3, img_g, label_true_g, label_target_g, args.div_prob)
+        adv = attacker.attack(model1, model2, model3, img_g, label_true_g, label_target_g)
 
         for bind, filename in enumerate(filenames):
             out_img = adv[bind].detach().cpu().numpy()
