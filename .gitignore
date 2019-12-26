@@ -1,7 +1,7 @@
 # Add by user
 .vscode/
 results/
-data/
+data/images/
 weight/
 
 # Byte-compiled / optimized / DLL files

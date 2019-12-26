@@ -65,13 +65,12 @@ def load_model():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dir', default='./data/', type=str)
-    parser.add_argument('--output_dir', default='./results/', type=str)
-    parser.add_argument('--csv', default='dev.csv', type=str)
-    parser.add_argument('--batch_size', default=4, type=int)
-    parser.add_argument('--steps', default=100, type=int)
-    parser.add_argument('--max_norm', default=32, type=float)
-    parser.add_argument('--div_prob', default=0.9, type=float)
+    parser.add_argument('--input_dir', default='./data/', type=str, help='path to data')
+    parser.add_argument('--output_dir', default='./results/', type=str, help='path to results')
+    parser.add_argument('--batch_size', default=4, type=int, help='mini-batch size')
+    parser.add_argument('--steps', default=100, type=int, help='iteration steps')
+    parser.add_argument('--max_norm', default=32, type=float, help='Linf limit')
+    parser.add_argument('--div_prob', default=0.9, type=float, help='probability of diversity')
     args = parser.parse_args()
 
     model1, model2, model3 = load_model()
@@ -81,7 +80,7 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
-    dataset = ImageNet_A(args.input_dir, csv_name=args.csv)
+    dataset = ImageNet_A(args.input_dir)
     loader = torch.utils.data.DataLoader(dataset, 
                                          batch_size=args.batch_size, 
                                          shuffle=False)

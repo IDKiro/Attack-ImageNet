@@ -3,7 +3,6 @@ import random
 import torch
 import numpy as np
 import glob
-import PIL.Image as Image
 import pandas as pd
 import cv2
 from torch.utils.data import Dataset
