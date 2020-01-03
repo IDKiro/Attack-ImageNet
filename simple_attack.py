@@ -13,6 +13,24 @@ from utils.Resnet import resnet152_denoise, resnet101_denoise, resnet152
 from utils.Normalize import Normalize, Permute
 
 
+class Ensemble(nn.Module):
+    def __init__(self, model1, model2, model3):
+        super(Ensemble, self).__init__()
+        self.model1 = model1
+        self.model2 = model2
+        self.model3 = model3
+
+    def forward(self, x):
+        logits1 = self.model1(x)
+        logits2 = self.model2(x)
+        logits3 = self.model3(x)
+
+        # fuse logits
+        logits_e = (logits1 + logits2 + logits3) / 3
+
+        return logits_e
+
+
 def load_model():
     pretrained_model1 = resnet101_denoise()
     loaded_state_dict = torch.load(os.path.join('weight', 'Adv_Denoise_Resnext101.pytorch'))
@@ -44,22 +62,6 @@ def load_model():
             pretrained_model3
         )
 
-    model1.cuda()
-    model1.eval()
-
-    model2.cuda()
-    model2.eval()
-
-    model3.cuda()
-    model3.eval()
-
-    for _, param in enumerate(model1.parameters()):
-        param.requires_grad = False
-    for _, param in enumerate(model2.parameters()):
-        param.requires_grad = False
-    for _, param in enumerate(model3.parameters()):
-        param.requires_grad = False
-
     return model1, model2, model3
 
 
@@ -73,37 +75,40 @@ if __name__ == '__main__':
     parser.add_argument('--div_prob', default=0.9, type=float, help='probability of diversity')
     args = parser.parse_args()
 
-    model1, model2, model3 = load_model()
-
     output_dir = os.path.join(args.output_dir, 'images')
-
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
+    # ensemble model
+    model1, model2, model3 = load_model()
+    model = Ensemble(model1, model2, model3)
+    model.cuda()
+    model.eval()
+
+    # set dataset
     dataset = ImageNet_A(args.input_dir)
     loader = torch.utils.data.DataLoader(dataset, 
                                          batch_size=args.batch_size, 
                                          shuffle=False)
 
+    # set attacker
     attacker = Attacker(steps=args.steps, 
                         max_norm=args.max_norm/255.0,
                         div_prob=args.div_prob,
                         device=torch.device('cuda'))
 
     for ind, (img, label_true, label_target, filenames) in enumerate(loader):
-        img_g, label_true_g, label_target_g = img.cuda(), label_true.cuda(), label_target.cuda()
 
-        adv = attacker.attack(model1, model2, model3, img_g, label_true_g, label_target_g)
+        # run attack
+        adv = attacker.attack(model, img.cuda(), label_true.cuda(), label_target.cuda())
 
+        # save results
         for bind, filename in enumerate(filenames):
             out_img = adv[bind].detach().cpu().numpy()
             delta_img = np.abs(out_img - img[bind].numpy()) * 255.0
 
             print('Attack on {}:'.format(os.path.split(filename)[-1]))
-            print('Max: {0:.0f}, Mean: {1:.2f}'.format(
-                (np.max(delta_img)),
-                (np.mean(delta_img)) 
-            ))
+            print('Max: {0:.0f}, Mean: {1:.2f}'.format(np.max(delta_img), np.mean(delta_img)))
 
             out_img = np.transpose(out_img, axes=[1, 2, 0]) * 255.0
             out_img = out_img[:, :, ::-1]

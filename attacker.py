@@ -41,9 +41,7 @@ class Attacker:
         return padded
 
     def attack(self, 
-               model1: nn.Module, 
-               model2: nn.Module,
-               model3: nn.Module,
+               model: nn.Module, 
                inputs: torch.Tensor, 
                labels_true: torch.Tensor,
                labels_target: torch.Tensor)-> torch.Tensor:
@@ -67,14 +65,10 @@ class Attacker:
             adv = inputs + delta
             div_adv = self.input_diversity(adv)
 
-            logits1 = model1(div_adv)
-            logits2 = model2(div_adv)
-            logits3 = model3(div_adv)
+            logits = model(div_adv)
 
-            # fuse logits
-            logits_e = (logits1 + logits2 + logits3) / 3
-            ce_loss_true = F.cross_entropy(logits_e, labels_true, reduction='none')     
-            ce_loss_target = F.cross_entropy(logits_e, labels_target, reduction='none')
+            ce_loss_true = F.cross_entropy(logits, labels_true, reduction='none')     
+            ce_loss_target = F.cross_entropy(logits, labels_target, reduction='none')
 
             # fuse targeted and untargeted
             loss = self.loss_amp * ce_loss_target - ce_loss_true
